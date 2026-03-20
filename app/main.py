@@ -28,6 +28,9 @@ async def lifespan(app: FastAPI):
     for cookie in settings.cookies:
         await account_manager.add_account(cookie_value=cookie)
 
+    # Refresh OAuth tokens for all OAuth-configured accounts on startup
+    await account_manager.refresh_oauth_tokens_on_startup()
+
     # Start tasks
     await account_manager.start_task()
     await session_manager.start_cleanup_task()
