@@ -386,6 +386,65 @@ class AccountManager:
                 )
             self.save_accounts()
 
+    async def refresh_oauth_tokens_on_startup(self) -> None:
+        """Refresh/obtain OAuth tokens for all accounts at startup.
+
+        - Accounts with existing OAuth tokens: refresh them.
+        - Accounts with only a cookie (COOKIE_ONLY): attempt OAuth authentication.
+        """
+        oauth_accounts = [
+            a for a in self._accounts.values()
+            if a.auth_type in [AuthType.OAUTH_ONLY, AuthType.BOTH] and a.oauth_token
+        ]
+        cookie_only_accounts = [
+            a for a in self._accounts.values()
+            if a.auth_type == AuthType.COOKIE_ONLY and a.cookie_value
+        ]
+
+        if oauth_accounts:
+            logger.info(
+                f"Refreshing OAuth tokens for {len(oauth_accounts)} account(s) on startup..."
+            )
+            await asyncio.gather(
+                *[self._refresh_account_token_on_startup(a) for a in oauth_accounts],
+                return_exceptions=True,
+            )
+
+        if cookie_only_accounts:
+            logger.info(
+                f"Attempting OAuth authentication for {len(cookie_only_accounts)} "
+                f"cookie-only account(s) on startup..."
+            )
+            await asyncio.gather(
+                *[self._attempt_oauth_authentication(a) for a in cookie_only_accounts],
+                return_exceptions=True,
+            )
+
+    async def _refresh_account_token_on_startup(self, account: Account) -> None:
+        """Refresh token; if refresh fails and we have a cookie, re-authenticate fully."""
+        success = await oauth_authenticator.refresh_account_token(account)
+        if success:
+            logger.info(
+                f"Startup token refresh succeeded: {account.organization_uuid[:8]}..."
+            )
+            return
+
+        if account.cookie_value:
+            logger.info(
+                f"Token refresh failed, re-authenticating via cookie: "
+                f"{account.organization_uuid[:8]}..."
+            )
+            account.auth_type = AuthType.COOKIE_ONLY
+            account.oauth_token = None
+            await self._attempt_oauth_authentication(account)
+        else:
+            logger.warning(
+                f"Token refresh failed and no cookie available: "
+                f"{account.organization_uuid[:8]}... marking invalid"
+            )
+            account.status = AccountStatus.INVALID
+            self.save_accounts()
+
     async def _attempt_oauth_authentication(self, account: Account) -> None:
         """Attempt OAuth authentication for an account."""
 
