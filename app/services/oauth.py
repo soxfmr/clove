@@ -100,7 +100,8 @@ class OAuthAuthenticator:
                 data=data,
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded",
-                    "User-Agent": "anthropic",
+                    "User-Agent": "claude-cli/2.1.80 (external, cli)",
+                    "anthropic-beta": "oauth-2025-04-20",
                 },
             )
         if response.status_code != 200:
